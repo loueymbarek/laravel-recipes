@@ -8,15 +8,15 @@ use Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-
-
 use Illuminate\Support\Facades\Password;
+
 class AuthController extends Controller
 {
     use AuthorizesRequests;
+
     /**
-     * Register a User.
-     *
+     * Inscription des nouveaux utilisateurs avec validation des données.
+     * 
      * @return \Illuminate\Http\JsonResponse
      */
     public function register() {
@@ -25,39 +25,39 @@ class AuthController extends Controller
             'email' => 'required|email|unique:users',
             'password' => 'required|confirmed|min:8',
         ]);
-  
-        if($validator->fails()){
+
+        if ($validator->fails()) {
             return response()->json($validator->errors()->toJson(), 400);
         }
-  
-        $user = new User;
-        $user->name = request()->name;
-        $user->email = request()->email;
-        $user->password = bcrypt(request()->password);
-        $user->save();
-  
+
+        $user = User::create([
+            'name' => request()->name,
+            'email' => request()->email,
+            'password' => bcrypt(request()->password),
+        ]);
+
         return response()->json($user, 201);
     }
-  
-  
+
     /**
-     * Get a JWT via given credentials.
-     *
+     * Authentification des utilisateurs enregistrés avec JWT pour la gestion des sessions.
+     * 
      * @return \Illuminate\Http\JsonResponse
      */
     public function login()
     {
         $credentials = request(['email', 'password']);
-  
-        if (! $token = auth()->attempt($credentials)) {      /*elequent ORM USED TO PREVENT SQL INJECTION ATTEMPS* attempt()*/
+
+        if (! $token = auth()->attempt($credentials)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
-  
+
         return $this->respondWithToken($token);
     }
+
     /**
-     * Get the authenticated User.
-     *
+     * Récupérer l'utilisateur authentifié.
+     * 
      * @return \Illuminate\Http\JsonResponse
      */
     public function me()
@@ -66,8 +66,8 @@ class AuthController extends Controller
     }
 
     /**
-     * Log the user out (Invalidate the token).
-     *
+     * Déconnexion de l'utilisateur (invalider le jeton).
+     * 
      * @return \Illuminate\Http\JsonResponse
      */
     public function logout()
@@ -78,8 +78,8 @@ class AuthController extends Controller
     }
 
     /**
-     * Refresh a token.
-     *
+     * Rafraîchir un jeton.
+     * 
      * @return \Illuminate\Http\JsonResponse
      */
     public function refresh()
@@ -88,10 +88,9 @@ class AuthController extends Controller
     }
 
     /**
-     * Get the token array structure.
-     *
+     * Structure de réponse du jeton.
+     * 
      * @param  string $token
-     *
      * @return \Illuminate\Http\JsonResponse
      */
     protected function respondWithToken($token)
@@ -104,8 +103,8 @@ class AuthController extends Controller
     }
 
     /**
-     * Update the authenticated User's profile.
-     *
+     * Mise à jour du profil de l'utilisateur authentifié.
+     * 
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
@@ -113,6 +112,7 @@ class AuthController extends Controller
     {
         $user = auth()->user();
         $this->authorize('update', $user);
+
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
             'email' => 'sometimes|required|string|email|max:255|unique:users,email,' . $user->id,
@@ -139,51 +139,47 @@ class AuthController extends Controller
     }
 
     /**
-     * Change the authenticated User's password.
-     *
+     * Changer le mot de passe de l'utilisateur authentifié.
+     * 
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-   /**
- * Change the authenticated User's password.
- *
- * @param  \Illuminate\Http\Request  $request
- * @return \Illuminate\Http\JsonResponse
- */
-public function changePassword(Request $request)
-{
-    $user = auth()->user();
+    public function changePassword(Request $request)
+    {
+        $user = auth()->user();
 
-    // Validate the request
-    $validator = Validator::make($request->all(), [
-        'current_password' => 'required',
-        'new_password' => 'required|string|min:8|confirmed',
-    ]);
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required',
+            'new_password' => 'required|string|min:8|confirmed',
+        ]);
 
-    if ($validator->fails()) {
-        return response()->json($validator->errors(), 400);
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), 400);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['message' => 'Current password is incorrect'], 400);
+        }
+
+        $user->password = bcrypt($request->new_password);
+        $user->save();
+
+        $token = auth()->refresh();
+
+        return response()->json([
+            'message' => 'Password updated successfully',
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth()->factory()->getTTL() * 60
+        ]);
     }
 
-    // Check if current password is correct
-    if (!Hash::check($request->current_password, $user->password)) {
-        return response()->json(['message' => 'Current password is incorrect'], 400);
-    }
-
-    // Update the password
-    $user->password = bcrypt($request->new_password);
-    $user->save();
-
-    // Invalidate existing token and generate a new one
-    $token = auth()->refresh();
-
-    return response()->json([
-        'message' => 'Password updated successfully',
-        'access_token' => $token,    /*generate a new token */
-        'token_type' => 'bearer',
-        'expires_in' => auth()->factory()->getTTL() * 60
-    ]);
-}
-
+    /**
+     * Réinitialisation du mot de passe via un lien envoyé par email.
+     * 
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function forgotPassword(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -199,19 +195,26 @@ public function changePassword(Request $request)
         );
 
         return $response == Password::RESET_LINK_SENT
-                    ? response()->json(['message' => 'Reset link sent to your email.'], 200)
-                    : response()->json(['error' => trans($response)], 400);
+            ? response()->json(['message' => 'Reset link sent to your email.'], 200)
+            : response()->json(['error' => trans($response)], 400);
     }
 
     /**
-     * Get the password broker for the controller.
-     *
+     * Obtenir le broker de mot de passe pour le contrôleur.
+     * 
      * @return \Illuminate\Contracts\Auth\PasswordBroker
      */
     public function broker()
     {
         return Password::broker();
     }
+
+    /**
+     * Réinitialiser le mot de passe de l'utilisateur.
+     * 
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function resetPassword(Request $request)
     {
         $request->validate([
@@ -225,10 +228,47 @@ public function changePassword(Request $request)
             $user->save();
         });
 
-        if ($response == Password::PASSWORD_RESET) {
-            return response()->json(['message' => 'Password reset successfully']);
-        } else {
-            return response()->json(['message' => 'Failed to reset password'], 400);
+        return $response == Password::PASSWORD_RESET
+            ? response()->json(['message' => 'Password reset successfully'])
+            : response()->json(['message' => 'Failed to reset password'], 400);
+    }
+
+    /**
+     * Supprimer le compte de l'utilisateur authentifié.
+     * 
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function deleteAccount(Request $request)
+    {
+        $user = auth()->user();
+        $this->authorize('update', $user);
+
+        try {
+            $user->delete();
+            auth()->logout();
+
+            return response()->json(['message' => 'Account deleted successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to delete account'], 500);
         }
+    }
+
+    /**
+     * Afficher le profil d'un autre utilisateur.
+     * 
+     * @param  \App\Models\User  $user
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getOtherUserProfile(User $user)
+    {
+        $userData = [
+            'name' => $user->name,
+            'email' => $user->email,
+        ];
+
+        return response()->json([
+            'user' => $userData,
+        ]);
     }
 }
