@@ -13,6 +13,7 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
+        Recipe::class => RecipePolicy::class,
         // Register your policies here
         'App\Models\User' => 'App\Policies\UserPolicy',
     ];

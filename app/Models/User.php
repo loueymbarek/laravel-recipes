@@ -2,13 +2,15 @@
  
 namespace App\Models;
  
-use Illuminate\Contracts\Auth\MustVerifyEmail;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject; 
- 
-class User extends Authenticatable implements JWTSubject,MustVerifyEmail
+
+
+class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
  
@@ -31,6 +33,9 @@ class User extends Authenticatable implements JWTSubject,MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+    ];
+    protected $casts = [
+        'recipes' => 'array',
     ];
  
     /**
@@ -65,4 +70,13 @@ class User extends Authenticatable implements JWTSubject,MustVerifyEmail
     {
         return [];
     }
+    public function recipes():HasMany
+    {
+        return $this->hasMany(Recipe::class);
+    }
+    public function comments()
+{
+    return $this->hasMany(Comment::class);
+}
+
 }

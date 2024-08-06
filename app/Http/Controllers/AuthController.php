@@ -3,12 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RecipeResource;
 use App\Models\User;
 use Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Password;
+use App\Http\Resources\UserResource;
+
+use App\Http\Resources\UserCollection;
+
+
 
 class AuthController extends Controller
 {
@@ -25,19 +31,20 @@ class AuthController extends Controller
             'email' => 'required|email|unique:users',
             'password' => 'required|confirmed|min:8',
         ]);
-
+    
         if ($validator->fails()) {
             return response()->json($validator->errors()->toJson(), 400);
         }
-
+    
         $user = User::create([
             'name' => request()->name,
             'email' => request()->email,
             'password' => bcrypt(request()->password),
         ]);
-
-        return response()->json($user, 201);
+    
+        return new UserResource($user, 201);
     }
+    
 
     /**
      * Authentification des utilisateurs enregistrés avec JWT pour la gestion des sessions.
@@ -61,9 +68,18 @@ class AuthController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
     public function me()
-    {
-        return response()->json(auth()->user());
-    }
+{
+    // Eager load the recipes relationship
+    $user = auth()->user();
+ $recipes = $user->recipes()->with('category')->get();
+    // Return user data with recipes
+    return response()->json([
+        
+        'name' => $user->name,
+        'email' => $user->email,
+        'recipes' => RecipeResource::collection($recipes),
+    ]);
+}
 
     /**
      * Déconnexion de l'utilisateur (invalider le jeton).
@@ -134,7 +150,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user' => $user,
+            'user' =>new UserResource($user),
         ]);
     }
 
@@ -262,13 +278,40 @@ class AuthController extends Controller
      */
     public function getOtherUserProfile(User $user)
     {
-        $userData = [
-            'name' => $user->name,
-            'email' => $user->email,
-        ];
+        // Use UserResource to transform user data
+        $userResource = new UserResource($user->load('recipes'));
+        $recipes = $user->recipes()->with('category')->get();
+        // Include a custom message in the response
+        $username = $user->name;
 
         return response()->json([
-            'user' => $userData,
+            'message' => "{$username} profile",
+            'user' => $userResource,
+            'recipes'=>RecipeResource::collection($recipes),
         ]);
     }
+    public function index()
+    {
+        // Eager load recipes with categories for all users
+        $users = User::with('recipes.category')->get();
+    
+        return response()->json($users->map(function ($user) {
+            // Transform user data using UserResource
+            $userResource = new UserResource($user);
+    
+            
+            // Get recipes with categories for the user
+            $recipes = $user->recipes()->with('category')->get();
+    
+            return [
+               
+                'user' => $userResource,
+                'recipes' => RecipeResource::collection($recipes),
+            ];
+        }));
+    }
+    
+    
+    
+    
 }
